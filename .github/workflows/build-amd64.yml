@@ -1,0 +1,54 @@
+name: Build TollGate amd64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.24.2"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: src/go.sum
+
+      - name: Build binaries
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          BUILD_TIME=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          LDFLAGS="-s -w \
+            -X 'github.com/OpenTollGate/tollgate-module-basic-go/src/cli.Version=local-amd64' \
+            -X 'github.com/OpenTollGate/tollgate-module-basic-go/src/cli.GitCommit=$GIT_COMMIT' \
+            -X 'github.com/OpenTollGate/tollgate-module-basic-go/src/cli.BuildTime=$BUILD_TIME'"
+
+          mkdir -p bin/amd64
+
+          GOOS=linux GOARCH=amd64 \
+            go build -C src -o "bin/amd64/tollgate-wrt" \
+            -trimpath -ldflags="$LDFLAGS" main.go
+
+          GOOS=linux GOARCH=amd64 \
+            go build -C src/cmd/tollgate-cli -o "bin/amd64/tollgate" \
+            -trimpath -ldflags="$LDFLAGS"
+
+          ls -lh bin/amd64/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tollgate-amd64
+          path: bin/amd64/
+          retention-days: 30
